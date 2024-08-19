@@ -7,7 +7,7 @@ use reth_execution_types::ExecutionOutcome;
 use reth_primitives::{proofs, Block, Bloom, Receipts, B256};
 use revm::db::CacheDB;
 use rsp_client_executor::{
-    io::ClientExecutorInput, ChainVariant, EthereumVariant, OptimismVariant, Variant,
+    io::ClientExecutorInput, ChainVariant, EthereumVariant, LineaVariant, OptimismVariant, Variant,
     CHAIN_ID_ETH_MAINNET, CHAIN_ID_OP_MAINNET,
 };
 use rsp_primitives::account_proof::eip1186_proof_to_account_proof;
@@ -37,6 +37,7 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> HostExecutor<T, P> {
         let chain_id = self.provider.get_chain_id().await?;
         let variant = match chain_id {
             CHAIN_ID_ETH_MAINNET => ChainVariant::Ethereum,
+            CHAIN_ID_LINEA_MAINNET => ChainVariant::Linea,
             CHAIN_ID_OP_MAINNET => ChainVariant::Optimism,
             _ => {
                 eyre::bail!("unknown chain ID: {}", chain_id);
@@ -45,6 +46,7 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> HostExecutor<T, P> {
 
         let client_input = match variant {
             ChainVariant::Ethereum => self.execute_variant::<EthereumVariant>(block_number).await,
+            ChainVariant::Linea => self.execute_variant::<LineaVariant>(block_number).await,
             ChainVariant::Optimism => self.execute_variant::<OptimismVariant>(block_number).await,
         }?;
 

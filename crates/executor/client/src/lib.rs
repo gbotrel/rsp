@@ -26,6 +26,9 @@ use revm_primitives::U256;
 /// Chain ID for Ethereum Mainnet.
 pub const CHAIN_ID_ETH_MAINNET: u64 = 0x1;
 
+/// Chain ID for Linea Mainnet.
+pub const CHAIN_ID_LINEA_MAINNET: u64 = 59144;
+
 /// Chain ID for OP Mainnnet.
 pub const CHAIN_ID_OP_MAINNET: u64 = 0xa;
 
@@ -58,6 +61,10 @@ pub trait Variant {
 #[derive(Debug)]
 pub struct EthereumVariant;
 
+/// Implementation for Linea-specific execution/validation logic.
+#[derive(Debug)]
+pub struct LineaVariant;
+
 /// Implementation for Optimism-specific execution/validation logic.
 #[derive(Debug)]
 pub struct OptimismVariant;
@@ -67,6 +74,8 @@ pub struct OptimismVariant;
 pub enum ChainVariant {
     /// Ethereum networks.
     Ethereum,
+    /// Linea networks.
+    Linea,
     /// OP stack networks.
     Optimism,
 }
@@ -76,6 +85,7 @@ impl ChainVariant {
     pub fn chain_id(&self) -> u64 {
         match self {
             ChainVariant::Ethereum => CHAIN_ID_ETH_MAINNET,
+            ChainVariant::Linea => CHAIN_ID_LINEA_MAINNET,
             ChainVariant::Optimism => CHAIN_ID_OP_MAINNET,
         }
     }
@@ -179,6 +189,37 @@ impl Variant for EthereumVariant {
         Ok(EthExecutorProvider::new(
             Self::spec().into(),
             CustomEvmConfig::from_variant(ChainVariant::Ethereum),
+        )
+        .executor(cache_db)
+        .execute((executor_block_input, executor_difficulty).into())?)
+    }
+
+    fn validate_block_post_execution(
+        block: &BlockWithSenders,
+        chain_spec: &ChainSpec,
+        receipts: &[Receipt],
+        requests: &[Request],
+    ) -> eyre::Result<()> {
+        Ok(validate_block_post_execution_ethereum(block, chain_spec, receipts, requests)?)
+    }
+}
+
+impl Variant for LineaVariant {
+    fn spec() -> ChainSpec {
+        rsp_primitives::chain_spec::linea_mainnet().unwrap()
+    }
+
+    fn execute<DB>(
+        executor_block_input: &BlockWithSenders,
+        executor_difficulty: U256,
+        cache_db: DB,
+    ) -> eyre::Result<BlockExecutionOutput<Receipt>>
+    where
+        DB: Database<Error: Into<ProviderError> + Display>,
+    {
+        Ok(EthExecutorProvider::new(
+            Self::spec().into(),
+            CustomEvmConfig::from_variant(ChainVariant::Linea),
         )
         .executor(cache_db)
         .execute((executor_block_input, executor_difficulty).into())?)
