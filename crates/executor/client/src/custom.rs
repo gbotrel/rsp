@@ -127,17 +127,17 @@ impl ConfigureEvm for CustomEvmConfig {
                     .append_handler_register(Self::set_precompiles)
                     .build()
             }
-            ChainVariant::Linea => {
-                EvmBuilder::default()
-                    .with_db(db)
-                    // add additional precompiles
-                    .append_handler_register(Self::set_precompiles)
-                    .build()
-            }
             ChainVariant::Optimism => {
                 EvmBuilder::default()
                     .with_db(db)
                     .optimism()
+                    // add additional precompiles
+                    .append_handler_register(Self::set_precompiles)
+                    .build()
+            }
+            ChainVariant::Linea => {
+                EvmBuilder::default()
+                    .with_db(db)
                     // add additional precompiles
                     .append_handler_register(Self::set_precompiles)
                     .build()
@@ -152,10 +152,10 @@ impl ConfigureEvmEnv for CustomEvmConfig {
             ChainVariant::Ethereum => {
                 EthEvmConfig::default().fill_tx_env(tx_env, transaction, sender)
             }
-            ChainVariant::Linea => EthEvmConfig::default().fill_tx_env(tx_env, transaction, sender),
             ChainVariant::Optimism => {
                 OptimismEvmConfig::default().fill_tx_env(tx_env, transaction, sender)
             }
+            ChainVariant::Linea => EthEvmConfig::default().fill_tx_env(tx_env, transaction, sender),
         }
     }
 
@@ -170,15 +170,15 @@ impl ConfigureEvmEnv for CustomEvmConfig {
             ChainVariant::Ethereum => {
                 EthEvmConfig::default().fill_cfg_env(cfg_env, chain_spec, header, total_difficulty)
             }
-            ChainVariant::Linea => {
-                EthEvmConfig::default().fill_cfg_env(cfg_env, chain_spec, header, total_difficulty)
-            }
             ChainVariant::Optimism => OptimismEvmConfig::default().fill_cfg_env(
                 cfg_env,
                 chain_spec,
                 header,
                 total_difficulty,
             ),
+            ChainVariant::Linea => {
+                EthEvmConfig::default().fill_cfg_env(cfg_env, chain_spec, header, total_difficulty)
+            }
         }
     }
 
@@ -192,9 +192,9 @@ impl ConfigureEvmEnv for CustomEvmConfig {
         match self.0 {
             ChainVariant::Ethereum => EthEvmConfig::default()
                 .fill_tx_env_system_contract_call(env, caller, contract, data),
-            ChainVariant::Linea => EthEvmConfig::default()
-                .fill_tx_env_system_contract_call(env, caller, contract, data),
             ChainVariant::Optimism => OptimismEvmConfig::default()
+                .fill_tx_env_system_contract_call(env, caller, contract, data),
+            ChainVariant::Linea => EthEvmConfig::default()
                 .fill_tx_env_system_contract_call(env, caller, contract, data),
         }
     }

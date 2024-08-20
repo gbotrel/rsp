@@ -77,8 +77,8 @@ async fn main() -> eyre::Result<()> {
         ChainVariant::Ethereum => {
             include_bytes!("../../client-eth/elf/riscv32im-succinct-zkvm-elf")
         }
-        ChainVariant::Linea => include_bytes!("../../client-linea/elf/riscv32im-succinct-zkvm-elf"),
         ChainVariant::Optimism => include_bytes!("../../client-op/elf/riscv32im-succinct-zkvm-elf"),
+        ChainVariant::Linea => include_bytes!("../../client-linea/elf/riscv32im-succinct-zkvm-elf"),
     });
 
     // Execute the block inside the zkVM.

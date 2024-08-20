@@ -12,7 +12,7 @@ pub fn op_mainnet() -> eyre::Result<ChainSpec> {
 
 /// Returns the [ChainSpec] for Linea Mainnet.
 pub fn linea_mainnet() -> eyre::Result<ChainSpec> {
-    let genesis = include_str!("../../../genesis-linea-mainnet.json");
+    let genesis = include_str!("../res/genesis/linea-mainnet.json");
     let genesis: reth_primitives::Genesis = serde_json::from_str(genesis).unwrap();
 
     let chain_spec = ChainSpecBuilder::default()
