@@ -81,8 +81,8 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> HostExecutor<T, P> {
             block_number,
             current_block.body.len()
         );
-        let executor_block_input = current_block
-            .clone()
+
+        let executor_block_input = V::pre_process_block(&current_block)
             .with_recovered_senders()
             .ok_or(eyre!("failed to recover senders"))?;
         let executor_difficulty = current_block.header.difficulty;
@@ -168,7 +168,7 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> HostExecutor<T, P> {
         // Create the client input.
         let client_input = ClientExecutorInput {
             previous_block: previous_block.header,
-            current_block,
+            current_block: V::pre_process_block(&current_block),
             dirty_storage_proofs,
             used_storage_proofs: rpc_db.fetch_used_accounts_and_proofs().await,
             block_hashes: rpc_db.block_hashes.borrow().clone(),
