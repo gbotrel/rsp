@@ -3,12 +3,12 @@ use std::marker::PhantomData;
 use alloy_provider::Provider;
 use alloy_transport::Transport;
 use eyre::{eyre, Ok};
+use itertools::Itertools;
 use reth_execution_types::ExecutionOutcome;
 use reth_primitives::{proofs, Block, Bloom, Receipts, B256};
 use revm::db::CacheDB;
 use rsp_client_executor::{
     io::ClientExecutorInput, ChainVariant, EthereumVariant, LineaVariant, OptimismVariant, Variant,
-    CHAIN_ID_ETH_MAINNET, CHAIN_ID_LINEA_MAINNET, CHAIN_ID_OP_MAINNET,
 };
 use rsp_primitives::account_proof::eip1186_proof_to_account_proof;
 use rsp_rpc_db::RpcDb;
@@ -32,25 +32,15 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> HostExecutor<T, P> {
     pub async fn execute(
         &self,
         block_number: u64,
-    ) -> eyre::Result<(ClientExecutorInput, ChainVariant)> {
-        tracing::info!("fetching chain ID to identify chain variant");
-        let chain_id = self.provider.get_chain_id().await?;
-        let variant = match chain_id {
-            CHAIN_ID_ETH_MAINNET => ChainVariant::Ethereum,
-            CHAIN_ID_OP_MAINNET => ChainVariant::Optimism,
-            CHAIN_ID_LINEA_MAINNET => ChainVariant::Linea,
-            _ => {
-                eyre::bail!("unknown chain ID: {}", chain_id);
-            }
-        };
-
+        variant: ChainVariant,
+    ) -> eyre::Result<ClientExecutorInput> {
         let client_input = match variant {
             ChainVariant::Ethereum => self.execute_variant::<EthereumVariant>(block_number).await,
             ChainVariant::Optimism => self.execute_variant::<OptimismVariant>(block_number).await,
             ChainVariant::Linea => self.execute_variant::<LineaVariant>(block_number).await,
         }?;
 
-        Ok((client_input, variant))
+        Ok(client_input)
     }
 
     async fn execute_variant<V>(&self, block_number: u64) -> eyre::Result<ClientExecutorInput>
@@ -123,10 +113,11 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> HostExecutor<T, P> {
         );
 
         // For every account we touched, fetch the storage proofs for all the slots we touched.
+        tracing::info!("fetching modified storage proofs");
         let mut dirty_storage_proofs = Vec::new();
         for (address, account) in executor_outcome.bundle_accounts_iter() {
             let mut storage_keys = Vec::new();
-            for key in account.storage.keys() {
+            for key in account.storage.keys().sorted() {
                 let slot = B256::new(key.to_be_bytes());
                 storage_keys.push(slot);
             }
@@ -143,10 +134,7 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> HostExecutor<T, P> {
         let state_root =
             rsp_mpt::compute_state_root(&executor_outcome, &dirty_storage_proofs, &rpc_db)?;
         if state_root != current_block.state_root {
-            // TODO: comment this check back in, but leaving it out for now so that we can
-            // get rough cycle counts.
-            println!("The state root doesn't match.");
-            // eyre::bail!("mismatched state root");
+            eyre::bail!("mismatched state root");
         }
 
         // Derive the block header.
@@ -171,7 +159,7 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> HostExecutor<T, P> {
 
         // Log the result.
         tracing::info!(
-            "sucessfully executed block: block_number={}, block_hash={}, state_root={}",
+            "successfully executed block: block_number={}, block_hash={}, state_root={}",
             current_block.header.number,
             header.hash_slow(),
             state_root
@@ -179,7 +167,7 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> HostExecutor<T, P> {
 
         // Create the client input.
         let client_input = ClientExecutorInput {
-            previous_block,
+            previous_block: previous_block.header,
             current_block,
             dirty_storage_proofs,
             used_storage_proofs: rpc_db.fetch_used_accounts_and_proofs().await,
@@ -187,77 +175,5 @@ impl<T: Transport + Clone, P: Provider<T> + Clone> HostExecutor<T, P> {
             trie_nodes: rpc_db.trie_nodes.borrow().values().cloned().collect(),
         };
         Ok(client_input)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    use alloy_provider::ReqwestProvider;
-    use rsp_client_executor::ClientExecutor;
-    use tracing_subscriber::{
-        filter::EnvFilter, fmt, prelude::__tracing_subscriber_SubscriberExt,
-        util::SubscriberInitExt,
-    };
-    use url::Url;
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_e2e_ethereum() {
-        run_e2e::<EthereumVariant>("RPC_1", 18884864, "client_input_ethereum.json").await;
-    }
-
-    #[tokio::test(flavor = "multi_thread")]
-    async fn test_e2e_optimism() {
-        run_e2e::<OptimismVariant>("RPC_10", 122853660, "client_input_optimism.json").await;
-    }
-
-    #[test]
-    fn test_input_bincode_roundtrip() {
-        let file = std::fs::File::open("client_input_ethereum.json").unwrap();
-        let client_input: ClientExecutorInput = serde_json::from_reader(file).unwrap();
-        let serialized = bincode::serialize(&client_input).unwrap();
-        let deserialized = bincode::deserialize::<ClientExecutorInput>(&serialized).unwrap();
-        assert_eq!(client_input, deserialized);
-    }
-
-    async fn run_e2e<V>(env_var_key: &str, block_number: u64, input_file: &str)
-    where
-        V: Variant,
-    {
-        // Intialize the environment variables.
-        dotenv::dotenv().ok();
-
-        // Initialize the logger.
-        let _ = tracing_subscriber::registry()
-            .with(fmt::layer())
-            .with(EnvFilter::from_default_env())
-            .try_init();
-
-        // Setup the provider.
-        let rpc_url =
-            Url::parse(std::env::var(env_var_key).unwrap().as_str()).expect("invalid rpc url");
-        let provider = ReqwestProvider::new_http(rpc_url);
-
-        // Setup the host executor.
-        let host_executor = HostExecutor::new(provider);
-
-        // Execute the host.
-        let (client_input, _) =
-            host_executor.execute(block_number).await.expect("failed to execute host");
-
-        // Setup the client executor.
-        let client_executor = ClientExecutor;
-
-        // Execute the client.
-        client_executor.execute::<V>(client_input.clone()).expect("failed to execute client");
-
-        // Save the client input to a file.
-        let file = std::fs::File::create(input_file).unwrap();
-        serde_json::to_writer_pretty(file, &client_input).unwrap();
-
-        // Load the client input from a file.
-        let file = std::fs::File::open(input_file).unwrap();
-        let _: ClientExecutorInput = serde_json::from_reader(file).unwrap();
     }
 }
