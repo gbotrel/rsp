@@ -22,3 +22,6 @@ pgo-data.profdata
 **/riscv32im-succinct-zkvm-elf
 
 **.csv
+
+# VSCode settings
+.vscode
