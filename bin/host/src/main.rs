@@ -12,6 +12,8 @@ use tracing_subscriber::{
     filter::EnvFilter, fmt, prelude::__tracing_subscriber_SubscriberExt, util::SubscriberInitExt,
 };
 
+use std::time::Instant;
+
 mod execute;
 use execute::process_execution_report;
 
@@ -69,6 +71,7 @@ async fn main() -> eyre::Result<()> {
         args.block_number,
     )?;
 
+    let start = Instant::now();
     let client_input = match (client_input_from_cache, provider_config.rpc_url) {
         (Some(client_input_from_cache), _) => client_input_from_cache,
         (None, Some(rpc_url)) => {
@@ -103,8 +106,11 @@ async fn main() -> eyre::Result<()> {
             eyre::bail!("cache not found and RPC URL not provided")
         }
     };
+    let took = start.elapsed();
+    println!("preparing client input took: {:?}", took);
 
     // Generate the proof.
+    let start = Instant::now();
     let client = ProverClient::new();
 
     // Setup the proving key and verification key.
@@ -120,10 +126,15 @@ async fn main() -> eyre::Result<()> {
     let mut stdin = SP1Stdin::new();
     let buffer = bincode::serialize(&client_input).unwrap();
     stdin.write_vec(buffer);
+    let took = start.elapsed();
+    println!("preparing for offline execution took: {:?}", took);
 
     // Only execute the program.
+    let start = Instant::now();
     let (mut public_values, execution_report) =
         client.execute(&pk.elf, stdin.clone()).run().unwrap();
+    let took = start.elapsed();
+    println!("offline execution took: {:?}", took);
 
     // Read the block hash.
     let block_hash = public_values.read::<B256>();
@@ -136,9 +147,11 @@ async fn main() -> eyre::Result<()> {
     if args.prove {
         // Actually generate the proof. It is strongly recommended you use the network prover
         // given the size of these programs.
+        let start = Instant::now();
         println!("Starting proof generation.");
         let proof = client.prove(&pk, stdin).compressed().run().expect("Proving should work.");
-        println!("Proof generation finished.");
+        let took = start.elapsed();
+        println!("Proof generation finished, took: {:?}", took);
 
         client.verify(&proof, &vk).expect("proof verification should succeed");
     }
